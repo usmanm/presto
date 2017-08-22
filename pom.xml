@@ -116,6 +116,7 @@
         <module>presto-thrift-testing-server</module>
         <module>presto-thrift-connector</module>
         <module>presto-matching</module>
+        <module>presto-usmanm</module>
     </modules>
 
     <dependencyManagement>
@@ -384,6 +385,12 @@
                 <groupId>com.facebook.hive</groupId>
                 <artifactId>hive-dwrf</artifactId>
                 <version>0.8.2</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.facebook.presto</groupId>
+                <artifactId>presto-usmanm</artifactId>
+                <version>${project.version}</version>
             </dependency>
 
             <dependency>
