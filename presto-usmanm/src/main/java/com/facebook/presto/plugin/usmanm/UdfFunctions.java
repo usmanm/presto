@@ -1,5 +1,6 @@
 package com.facebook.presto.plugin.usmanm;
 
+import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.function.Description;
 import com.facebook.presto.spi.function.ScalarFunction;
 import com.facebook.presto.spi.function.SqlType;
@@ -7,6 +8,7 @@ import com.facebook.presto.spi.PrestoException;
 import static com.facebook.presto.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static com.facebook.presto.spi.StandardErrorCode.INVALID_FUNCTION_ARGUMENT;
 import com.facebook.presto.spi.type.StandardTypes;
+import com.facebook.presto.spi.type.VarcharType;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.type.MapType;
@@ -38,27 +40,43 @@ public final class UdfFunctions {
     private UdfFunctions() {
     }
 
-    @Description("Returns the key for a Ledger account name")
-    @ScalarFunction("account_key")
-    @SqlType(StandardTypes.VARCHAR)
-    public static Slice accountKey(@SqlType(StandardTypes.VARCHAR) Slice accountName) {
-        TreeMap<String, String> map;
-        String in = accountName.toStringUtf8();
-
+    private static String canonicalName(TreeMap<String, String> account) {
         try {
-            map = objectMapper.readValue(in, mapType);
-        } catch (IOException e) {
-            throw new PrestoException(INVALID_FUNCTION_ARGUMENT, "Invalid argument to account_key(): " + in);
-        }
-
-        String canonicalName = null;
-        try {
-            canonicalName = objectMapper.writeValueAsString(map);
+            return objectMapper.writeValueAsString(account);
         } catch (JsonProcessingException e) {
             throw new PrestoException(GENERIC_INTERNAL_ERROR, "Failed to dump sorted JSON");
         }
+    }
 
-        String hexDigest = Hex.encodeHexString(md5.digest(canonicalName.getBytes()));
-        return Slices.utf8Slice(hexDigest);
+    @Description("Returns the key for a Ledger account name")
+    @ScalarFunction("account_key")
+    @SqlType(StandardTypes.VARCHAR)
+    public static Slice accountKey(@SqlType(StandardTypes.VARCHAR) Slice slice) {
+        String accountName = slice.toStringUtf8();
+
+        TreeMap<String, String> account;
+        try {
+            account = objectMapper.readValue(accountName, mapType);
+        } catch (IOException e) {
+            throw new PrestoException(INVALID_FUNCTION_ARGUMENT, "Invalid argument to account_key(): " + accountName);
+        }
+
+        String key = Hex.encodeHexString(md5.digest(canonicalName(account).getBytes()));
+        return Slices.utf8Slice(key);
+    }
+
+    @Description("Returns the name for a Ledger account")
+    @ScalarFunction("account_name")
+    @SqlType(StandardTypes.VARCHAR)
+    public static Slice accountName(@SqlType("map(varchar,varchar)") Block block) {
+        VarcharType type = VarcharType.createUnboundedVarcharType();
+        TreeMap<String, String> account = new TreeMap<>();
+        for (int i = 0; i < block.getPositionCount(); i += 2) {
+            Slice key = type.getSlice(block, i);
+            Slice value = type.getSlice(block, i + 1);
+            account.put(key.toStringUtf8(), value.toStringUtf8());
+        }
+
+        return Slices.utf8Slice(canonicalName(account));
     }
 }
